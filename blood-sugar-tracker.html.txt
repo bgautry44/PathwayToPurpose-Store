@@ -1,0 +1,373 @@
+blood-sugar-tracker.html
+import React, { useState, useEffect } from 'react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+
+const BloodSugarTracker = () => {
+  const [readings, setReadings] = useState([]);
+  const [currentReading, setCurrentReading] = useState('');
+  const [selectedTime, setSelectedTime] = useState('Before Breakfast');
+  const [notes, setNotes] = useState('');
+  const [showChart, setShowChart] = useState(false);
+  const [viewMode, setViewMode] = useState('today');
+  const [showAddModal, setShowAddModal] = useState(false);
+
+  const timeOptions = [
+    'Before Breakfast', 'After Breakfast', 'Before Lunch', 'After Lunch',
+    'Before Dinner', 'After Dinner', 'Bedtime', 'Other'
+  ];
+
+  const targetRanges = {
+    'Before Breakfast': { min: 80, max: 130 },
+    'After Breakfast': { min: 90, max: 180 },
+    'Before Lunch': { min: 80, max: 130 },
+    'After Lunch': { min: 90, max: 180 },
+    'Before Dinner': { min: 80, max: 130 },
+    'After Dinner': { min: 90, max: 180 },
+    'Bedtime': { min: 100, max: 140 },
+    'Other': { min: 80, max: 140 }
+  };
+
+  useEffect(() => {
+    const sampleData = [
+      { id: 1, value: 95, time: 'Before Breakfast', date: new Date().toISOString().split('T')[0], timestamp: new Date(), notes: '' },
+      { id: 2, value: 145, time: 'After Breakfast', date: new Date().toISOString().split('T')[0], timestamp: new Date(Date.now() - 3600000), notes: 'Had pancakes' },
+      { id: 3, value: 110, time: 'Before Lunch', date: new Date().toISOString().split('T')[0], timestamp: new Date(Date.now() - 7200000), notes: '' },
+      { id: 4, value: 165, time: 'After Lunch', date: new Date(Date.now() - 86400000).toISOString().split('T')[0], timestamp: new Date(Date.now() - 86400000), notes: 'Pizza lunch' },
+      { id: 5, value: 88, time: 'Before Dinner', date: new Date(Date.now() - 86400000).toISOString().split('T')[0], timestamp: new Date(Date.now() - 90000000), notes: '' }
+    ];
+    setReadings(sampleData);
+  }, []);
+
+  const addReading = () => {
+    if (!currentReading || isNaN(currentReading)) {
+      alert('Please enter a valid blood sugar reading');
+      return;
+    }
+
+    const value = parseInt(currentReading);
+    if (value < 20 || value > 600) {
+      if (!confirm('This reading seems unusual. Do you want to continue?')) {
+        return;
+      }
+    }
+
+    const newReading = {
+      id: Date.now(),
+      value: value,
+      time: selectedTime,
+      date: new Date().toISOString().split('T')[0],
+      timestamp: new Date(),
+      notes: notes
+    };
+
+    setReadings([newReading, ...readings]);
+    setCurrentReading('');
+    setNotes('');
+    setShowAddModal(false);
+
+    if (value < 70) {
+      alert('Low Blood Sugar Alert: Your reading is below 70 mg/dL. Consider treating hypoglycemia and consult your healthcare provider.');
+    } else if (value > 250) {
+      alert('High Blood Sugar Alert: Your reading is above 250 mg/dL. Please consult your healthcare provider.');
+    }
+  };
+
+  const getReadingColor = (value, timeOfDay) => {
+    const range = targetRanges[timeOfDay];
+    if (value < 70) return '#FF4444';
+    if (value < range.min) return '#FFA500';
+    if (value <= range.max) return '#4CAF50';
+    if (value > 250) return '#FF4444';
+    return '#FFA500';
+  };
+
+  const getStatusText = (value, timeOfDay) => {
+    const range = targetRanges[timeOfDay];
+    if (value < 70) return 'Low';
+    if (value < range.min) return 'Below Target';
+    if (value <= range.max) return 'In Target';
+    if (value > 250) return 'Very High';
+    return 'Above Target';
+  };
+
+  const getFilteredReadings = () => {
+    const today = new Date().toISOString().split('T')[0];
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    switch (viewMode) {
+      case 'today':
+        return readings.filter(r => r.date === today);
+      case 'week':
+        return readings.filter(r => r.date >= weekAgo);
+      case 'month':
+        return readings.filter(r => r.date >= monthAgo);
+      default:
+        return readings;
+    }
+  };
+
+  const getAverageReading = () => {
+    const filtered = getFilteredReadings();
+    if (filtered.length === 0) return 0;
+    return Math.round(filtered.reduce((sum, r) => sum + r.value, 0) / filtered.length);
+  };
+
+  const getChartData = () => {
+    return getFilteredReadings().slice(0, 20).reverse().map((reading, index) => ({
+      name: reading.time.split(' ')[1] || reading.time.split(' ')[0],
+      value: reading.value,
+      fullTime: reading.time,
+      time: reading.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      date: reading.timestamp.toLocaleDateString()
+    }));
+  };
+
+  const exportData = () => {
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + "Date,Time,Reading Type,Blood Sugar (mg/dL),Status,Notes\n"
+      + readings.map(r => 
+          `${r.timestamp.toLocaleDateString()},${r.timestamp.toLocaleTimeString()},${r.time},${r.value},${getStatusText(r.value, r.time)},"${r.notes}"`
+        ).join("\n");
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "blood_sugar_readings.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-blue-600 text-white p-6 shadow-lg">
+        <h1 className="text-3xl font-bold text-center">Blood Sugar Tracker</h1>
+        <p className="text-center text-blue-100 mt-2">Monitor your diabetes management</p>
+      </div>
+
+      <div className="max-w-4xl mx-auto p-4">
+        {/* Quick Stats */}
+        <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+          <h2 className="text-xl font-bold text-center mb-4">Quick Stats</h2>
+          <div className="grid grid-cols-3 gap-4 text-center">
+            <div>
+              <div className="text-3xl font-bold text-blue-600">{getAverageReading()}</div>
+              <div className="text-gray-500 text-sm">Average (mg/dL)</div>
+            </div>
+            <div>
+              <div className="text-3xl font-bold text-green-600">{getFilteredReadings().length}</div>
+              <div className="text-gray-500 text-sm">Total Readings</div>
+            </div>
+            <div>
+              <div className="text-3xl font-bold text-orange-500">
+                {Math.round((getFilteredReadings().filter(r => {
+                  const range = targetRanges[r.time];
+                  return r.value >= range.min && r.value <= range.max;
+                }).length / Math.max(getFilteredReadings().length, 1)) * 100)}%
+              </div>
+              <div className="text-gray-500 text-sm">In Target Range</div>
+            </div>
+          </div>
+        </div>
+
+        {/* View Mode Selector */}
+        <div className="flex bg-white rounded-xl shadow-lg p-2 mb-6">
+          {['today', 'week', 'month'].map(mode => (
+            <button
+              key={mode}
+              onClick={() => setViewMode(mode)}
+              className={`flex-1 py-3 px-4 rounded-lg font-semibold transition-colors ${
+                viewMode === mode 
+                  ? 'bg-blue-600 text-white' 
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              {mode.charAt(0).toUpperCase() + mode.slice(1)}
+            </button>
+          ))}
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex gap-4 mb-6">
+          <button
+            onClick={() => setShowChart(!showChart)}
+            className="flex-1 bg-green-600 text-white py-4 px-6 rounded-xl font-semibold hover:bg-green-700 transition-colors"
+          >
+            {showChart ? 'Hide Chart' : 'Show Trend Chart'}
+          </button>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex-1 bg-blue-600 text-white py-4 px-6 rounded-xl font-semibold hover:bg-blue-700 transition-colors"
+          >
+            Add New Reading
+          </button>
+          <button
+            onClick={exportData}
+            className="flex-1 bg-purple-600 text-white py-4 px-6 rounded-xl font-semibold hover:bg-purple-700 transition-colors"
+          >
+            Export Data
+          </button>
+        </div>
+
+        {/* Chart */}
+        {showChart && getChartData().length > 0 && (
+          <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <h3 className="text-xl font-bold mb-4">Blood Sugar Trend</h3>
+            <div className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={getChartData()}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis domain={[60, 200]} />
+                  <Tooltip 
+                    formatter={(value, name, props) => [
+                      `${value} mg/dL`,
+                      props.payload.fullTime
+                    ]}
+                    labelFormatter={(label, payload) => {
+                      if (payload && payload[0]) {
+                        return `${payload[0].payload.date} at ${payload[0].payload.time}`;
+                      }
+                      return label;
+                    }}
+                  />
+                  <Line 
+                    type="monotone" 
+                    dataKey="value" 
+                    stroke="#2563eb" 
+                    strokeWidth={3}
+                    dot={{ fill: '#2563eb', strokeWidth: 2, r: 6 }}
+                    activeDot={{ r: 8 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
+
+        {/* Recent Readings */}
+        <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+          <h3 className="text-xl font-bold mb-4">Recent Readings</h3>
+          <div className="space-y-4">
+            {getFilteredReadings().slice(0, 10).map(reading => (
+              <div key={reading.id} className="flex justify-between items-center p-4 border-b border-gray-100 last:border-b-0">
+                <div className="flex-1">
+                  <div className="font-semibold text-lg">{reading.time}</div>
+                  <div className="text-gray-500 text-sm">
+                    {reading.timestamp.toLocaleDateString()} at {reading.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                  {reading.notes && (
+                    <div className="text-gray-600 text-sm italic mt-1">
+                      "{reading.notes}"
+                    </div>
+                  )}
+                </div>
+                <div className="text-center">
+                  <div 
+                    className="text-2xl font-bold"
+                    style={{ color: getReadingColor(reading.value, reading.time) }}
+                  >
+                    {reading.value}
+                  </div>
+                  <div 
+                    className="text-xs font-semibold"
+                    style={{ color: getReadingColor(reading.value, reading.time) }}
+                  >
+                    {getStatusText(reading.value, reading.time)}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Target Ranges Info */}
+        <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+          <h3 className="text-xl font-bold mb-4">Target Ranges (mg/dL)</h3>
+          <div className="grid grid-cols-2 gap-4">
+            {Object.entries(targetRanges).map(([time, range]) => (
+              <div key={time} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                <span className="text-gray-700">{time}</span>
+                <span className="font-semibold text-green-600">
+                  {range.min} - {range.max}
+                </span>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-gray-500 mt-4 italic">
+            * Consult your healthcare provider for personalized target ranges
+          </p>
+        </div>
+      </div>
+
+      {/* Add Reading Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md">
+            <h2 className="text-2xl font-bold mb-6 text-center">Add Blood Sugar Reading</h2>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-semibold mb-2">Blood Sugar Level (mg/dL)</label>
+              <input
+                type="number"
+                value={currentReading}
+                onChange={(e) => setCurrentReading(e.target.value)}
+                placeholder="Enter reading (e.g., 120)"
+                className="w-full p-4 border border-gray-300 rounded-lg text-lg"
+              />
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-semibold mb-2">Time of Reading</label>
+              <div className="grid grid-cols-2 gap-2">
+                {timeOptions.map(time => (
+                  <button
+                    key={time}
+                    onClick={() => setSelectedTime(time)}
+                    className={`p-3 text-sm rounded-lg border-2 transition-colors ${
+                      selectedTime === time
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+                    }`}
+                  >
+                    {time}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-sm font-semibold mb-2">Notes (Optional)</label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Any notes about this reading..."
+                rows={3}
+                className="w-full p-4 border border-gray-300 rounded-lg resize-none"
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="flex-1 py-3 px-4 bg-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-400 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={addReading}
+                className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+              >
+                Add Reading
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default BloodSugarTracker;
