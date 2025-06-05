@@ -1,0 +1,1 @@
+This app has been developed to assist in the monitoring of blood glucose levels in individuals that may require exhibit diabetic or pre-diabetic conditions. This is not intended to be a substitute for consultation with your personal healthcare provider.
